@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
@@ -31,17 +33,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
-
-using ::tensorflow::str_util::Join;
-using ::tensorflow::strings::StrAppend;
-using ::tensorflow::strings::StrCat;
-
 namespace {
+
+using absl::StrAppend;
 
 bool IsEntryParameterValue(const HloValue& value) {
   const HloComputation* computation = value.defining_instruction()->parent();
@@ -312,7 +309,7 @@ Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
   return Status::OK();
 }
 
-// We add copies for all the indices of the true and false computaiton roots,
+// We add copies for all the indices of the true and false computation roots,
 // in order to resolve interference. We later rely on the CopyRemover to drop
 // the unnecessary ones.
 Status AddCopiesForConditional(const HloAliasAnalysis& alias_analysis,
@@ -381,7 +378,7 @@ class CopyRemover {
   }
 
   string ToString() const {
-    string out = StrCat("CopyRemover, module ", module_->name(), "\n");
+    string out = absl::StrCat("CopyRemover, module ", module_->name(), "\n");
     StrAppend(&out, "  Buffer values, in dependency order:\n");
     for (const HloBuffer& buffer : alias_analysis_.buffers()) {
       StrAppend(&out, "    HloBuffer ", buffer.id(), ":\n");
@@ -648,7 +645,12 @@ class CopyRemover {
       //  We can only perform copy elision if the resulting merged values have
       //  totally ordered live ranges; otherwise the merged buffer would have
       //  live range interference.
-      if (IsHead(*dest)) {
+      if (src->next == dest) {
+        // In the process of eliding copies, its possible for a copy to have the
+        // same source and destination buffer. In this case, the copy can be
+        // safely removed.
+        VLOG(2) << copy->name() << " source and destination buffers are same.";
+      } else if (IsHead(*dest)) {
         // The copy copies an arbitrary value in the source buffer (call it s_x)
         // and defines d_0, the first value in the destination buffer. After
         // merging, the values in the combined buffer must be strictly ordered
@@ -858,16 +860,16 @@ class CopyRemover {
       for (const ValueNode* p = head; p != nullptr; p = Next(*p)) {
         values.push_back(p->value);
       }
-      return StrCat("{",
-                    Join(values, ", ",
-                         [](string* s, const HloValue* value) {
-                           StrAppend(s, value->ToShortString());
-                         }),
-                    "}");
+      return absl::StrCat("{",
+                          absl::StrJoin(values, ", ",
+                                        [](string* s, const HloValue* value) {
+                                          StrAppend(s, value->ToShortString());
+                                        }),
+                          "}");
     }
 
     string ToString() const {
-      string out = StrCat("BufferValueTracker:\n");
+      string out = absl::StrCat("BufferValueTracker:\n");
       StrAppend(&out, "  Def-use chains in each buffer:\n");
       for (const ValueNode* head : value_lists_) {
         StrAppend(&out, "    Buffer defined by ", head->value->ToShortString(),
@@ -875,10 +877,10 @@ class CopyRemover {
         const ValueNode* p = head;
         do {
           StrAppend(&out, "      ", p->value->ToShortString(), ", uses: ",
-                    Join(p->uses, "; ",
-                         [](string* s, const HloUse* use) {
-                           StrAppend(s, use->ToString());
-                         }),
+                    absl::StrJoin(p->uses, "; ",
+                                  [](string* s, const HloUse* use) {
+                                    StrAppend(s, use->ToString());
+                                  }),
                     "\n");
 
           p = p->next;

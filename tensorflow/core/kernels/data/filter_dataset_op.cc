@@ -79,12 +79,12 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
  private:
   const int graph_def_version_;
 
-  class FilterDatasetBase : public GraphDatasetBase {
+  class FilterDatasetBase : public DatasetBase {
    public:
     FilterDatasetBase(OpKernelContext* ctx, const DatasetBase* input,
                       const NameAttrList& func,
                       std::unique_ptr<CapturedFunction> captured_func)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           func_(func),
           captured_func_(std::move(captured_func)) {
@@ -149,7 +149,9 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<FilterDatasetBase>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        TF_RETURN_IF_ERROR(
+            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+        return dataset()->captured_func_->Instantiate(ctx);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
