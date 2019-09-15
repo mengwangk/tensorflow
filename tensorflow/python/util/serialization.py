@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.util.compat import collections_abc
 
 
 def get_json_type(obj):
@@ -43,7 +44,7 @@ def get_json_type(obj):
   # if obj is any numpy type
   if type(obj).__module__ == np.__name__:
     if isinstance(obj, np.ndarray):
-      return {'type': type(obj), 'value': obj.tolist()}
+      return obj.tolist()
     else:
       return obj.item()
 
@@ -60,5 +61,8 @@ def get_json_type(obj):
 
   if isinstance(obj, tensor_shape.TensorShape):
     return obj.as_list()
+
+  if isinstance(obj, collections_abc.Mapping):
+    return dict(obj)
 
   raise TypeError('Not JSON Serializable:', obj)

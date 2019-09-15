@@ -37,7 +37,7 @@ def flatbuffer_library_public(
       flatc_args: Optional, list of additional arguments to pass to flatc.
       reflection_name: Optional, if set this will generate the flatbuffer
         reflection binaries for the schemas.
-      reflection_visiblity: The visibility of the generated reflection Fileset.
+      reflection_visibility: The visibility of the generated reflection Fileset.
       output_to_bindir: Passed to genrule for output to bin directory.
     """
     include_paths_cmd = ["-I %s" % (s) for s in include_paths]
@@ -92,14 +92,17 @@ def flatbuffer_library_public(
             cmd = reflection_genrule_cmd,
             message = "Generating flatbuffer reflection binary for %s:" % (name),
         )
-        native.Fileset(
-            name = reflection_name,
-            out = "%s_out" % reflection_name,
-            entries = [
-                native.FilesetEntry(files = reflection_outs),
-            ],
-            visibility = reflection_visiblity,
-        )
+        # TODO(b/114456773): Make bazel rules proper and supported by flatbuffer
+        # Have to comment this since FilesetEntry is not supported in bazel
+        # skylark.
+        # native.Fileset(
+        #     name = reflection_name,
+        #     out = "%s_out" % reflection_name,
+        #     entries = [
+        #         native.FilesetEntry(files = reflection_outs),
+        #     ],
+        #     visibility = reflection_visiblity,
+        # )
 
 def flatbuffer_cc_library(
         name,

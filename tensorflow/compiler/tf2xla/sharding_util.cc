@@ -17,7 +17,6 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -54,7 +53,7 @@ xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
     const string& device_name, int num_cores_per_replica,
     absl::optional<xla::OpSharding> explicit_sharding) {
   if (device_name.empty()) {
-    return absl::optional<xla::OpSharding>();
+    return explicit_sharding;
   }
   DeviceNameUtils::ParsedName parsed_device;
   if (!DeviceNameUtils::ParseFullName(device_name, &parsed_device)) {

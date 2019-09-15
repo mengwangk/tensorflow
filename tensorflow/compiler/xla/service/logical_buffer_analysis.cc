@@ -54,7 +54,7 @@ Status LogicalBufferAnalysis::Analyze() {
   // so reserve 10% more than the number of instructions to avoid frequent
   // resizes.
   logical_buffers_.clear();
-  logical_buffers_.reserve((module_->NumUniqueInstructionIds() * 11) / 10);
+  logical_buffers_.reserve((module_->instruction_count() * 11) / 10);
 
   // We filter out fusion computations, and get to them through fusion
   // instructions. This is because it's possible to have orphaned (unreachable)
@@ -113,6 +113,13 @@ Status LogicalBufferAnalysis::HandleGetTupleElement(HloInstruction*) {
   return Status::OK();
 }
 
+Status LogicalBufferAnalysis::HandleAddDependency(
+    HloInstruction* add_dependency) {
+  // AddDependency just forwards the value of its zero-th operand and does not
+  // create buffers.
+  return Status::OK();
+}
+
 Status LogicalBufferAnalysis::HandleCopy(HloInstruction* copy) {
   // The top-level buffer (index={}) for kCopy is newly created, but all other
   // buffers (in the case of a tuple shape) come from the operand
@@ -149,6 +156,12 @@ Status LogicalBufferAnalysis::HandleSend(HloInstruction* send) {
   NewLogicalBuffer(send, /*index=*/{});
   NewLogicalBuffer(send, /*index=*/{1});
   NewLogicalBuffer(send, /*index=*/{2});
+  return Status::OK();
+}
+
+Status LogicalBufferAnalysis::HandleCopyDone(HloInstruction* copy_done) {
+  // The top-level buffer (index={}) for kCopy is newly created, but all other
+  // buffers (in the case of a tuple shape) come from the operand.
   return Status::OK();
 }
 

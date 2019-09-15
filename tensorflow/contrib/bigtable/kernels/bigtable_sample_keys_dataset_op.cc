@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 class BigtableSampleKeysDatasetOp : public DatasetOpKernel {
@@ -24,10 +25,10 @@ class BigtableSampleKeysDatasetOp : public DatasetOpKernel {
   using DatasetOpKernel::DatasetOpKernel;
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
-    BigtableTableResource* resource;
+    core::RefCountPtr<BigtableTableResource> resource;
     OP_REQUIRES_OK(ctx,
                    LookupResource(ctx, HandleFromInput(ctx, 0), &resource));
-    *output = new Dataset(ctx, resource);
+    *output = new Dataset(ctx, resource.get());
   }
 
  private:
@@ -63,12 +64,17 @@ class BigtableSampleKeysDatasetOp : public DatasetOpKernel {
 
     BigtableTableResource* table() const { return table_; }
 
+    Status CheckExternalState() const override {
+      return errors::FailedPrecondition(DebugString(),
+                                        " depends on external state.");
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      return errors::Unimplemented("%s does not support serialization",
-                                   DebugString());
+      return errors::Unimplemented(DebugString(),
+                                   " does not support serialization");
     }
 
    private:
@@ -78,12 +84,14 @@ class BigtableSampleKeysDatasetOp : public DatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        ::grpc::Status status;
-        row_keys_ = dataset()->table()->table().SampleRows(status);
-        if (!status.ok()) {
+        ::google::cloud::StatusOr<
+            std::vector<::google::cloud::bigtable::RowKeySample>>
+            sampled_rows = dataset()->table()->table().SampleRows();
+        if (!sampled_rows.ok()) {
           row_keys_.clear();
-          return GrpcStatusToTfStatus(status);
+          return GcpStatusToTfStatus(sampled_rows.status());
         }
+        row_keys_ = std::move(*sampled_rows);
         return Status::OK();
       }
 
@@ -94,14 +102,25 @@ class BigtableSampleKeysDatasetOp : public DatasetOpKernel {
         if (index_ < row_keys_.size()) {
           out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
                                     TensorShape({}));
-          out_tensors->back().scalar<string>()() =
-              string(row_keys_[index_].row_key);
+          out_tensors->back().scalar<tstring>()() =
+              tstring(row_keys_[index_].row_key);
           *end_of_sequence = false;
           index_++;
         } else {
           *end_of_sequence = true;
         }
         return Status::OK();
+      }
+
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        return errors::Unimplemented("SaveInternal is currently not supported");
+      }
+
+      Status RestoreInternal(IteratorContext* ctx,
+                             IteratorStateReader* reader) override {
+        return errors::Unimplemented(
+            "RestoreInternal is currently not supported");
       }
 
      private:
@@ -118,4 +137,5 @@ REGISTER_KERNEL_BUILDER(Name("BigtableSampleKeysDataset").Device(DEVICE_CPU),
                         BigtableSampleKeysDatasetOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

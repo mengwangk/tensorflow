@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/contrib/bigtable/kernels/bigtable_lib.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/lib/core/refcount.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 class BigtableRangeKeyDatasetOp : public DatasetOpKernel {
@@ -24,18 +26,17 @@ class BigtableRangeKeyDatasetOp : public DatasetOpKernel {
   using DatasetOpKernel::DatasetOpKernel;
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
-    string start_key;
+    tstring start_key;
     OP_REQUIRES_OK(ctx,
-                   ParseScalarArgument<string>(ctx, "start_key", &start_key));
-    string end_key;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "end_key", &end_key));
+                   ParseScalarArgument<tstring>(ctx, "start_key", &start_key));
+    tstring end_key;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, "end_key", &end_key));
 
-    BigtableTableResource* resource;
+    core::RefCountPtr<BigtableTableResource> resource;
     OP_REQUIRES_OK(ctx,
                    LookupResource(ctx, HandleFromInput(ctx, 0), &resource));
-
-    *output =
-        new Dataset(ctx, resource, std::move(start_key), std::move(end_key));
+    *output = new Dataset(ctx, resource.get(), std::move(start_key),
+                          std::move(end_key));
   }
 
  private:
@@ -75,12 +76,17 @@ class BigtableRangeKeyDatasetOp : public DatasetOpKernel {
 
     BigtableTableResource* table() const { return table_; }
 
+    Status CheckExternalState() const override {
+      return errors::FailedPrecondition(DebugString(),
+                                        " depends on external state.");
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      return errors::Unimplemented("%s does not support serialization",
-                                   DebugString());
+      return errors::Unimplemented(DebugString(),
+                                   " does not support serialization");
     }
 
    private:
@@ -102,7 +108,7 @@ class BigtableRangeKeyDatasetOp : public DatasetOpKernel {
                       const ::google::cloud::bigtable::Row& row,
                       std::vector<Tensor>* out_tensors) override {
         Tensor output_tensor(ctx->allocator({}), DT_STRING, {});
-        output_tensor.scalar<string>()() = string(row.row_key());
+        output_tensor.scalar<tstring>()() = tstring(row.row_key());
         out_tensors->emplace_back(std::move(output_tensor));
         return Status::OK();
       }
@@ -117,4 +123,5 @@ class BigtableRangeKeyDatasetOp : public DatasetOpKernel {
 REGISTER_KERNEL_BUILDER(Name("BigtableRangeKeyDataset").Device(DEVICE_CPU),
                         BigtableRangeKeyDatasetOp);
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

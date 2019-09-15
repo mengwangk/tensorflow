@@ -1,12 +1,21 @@
-licenses(["notice"])
+package(licenses = ["notice"])
 
 exports_files(["LICENSE"])
 
 config_setting(
-    name = "using_mkl_dnn_only",
+    name = "build_with_mkl_dnn_only",
     define_values = {
-        "using_mkl": "true",
-        "using_mkl_dnn_only": "true",
+        "build_with_mkl": "true",
+        "build_with_mkl_dnn_only": "true",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "build_with_mkl_dnn_v1_only",
+    define_values = {
+        "build_with_mkl": "true",
+        "build_with_mkl_dnn_v1_only": "true",
     },
     visibility = ["//visibility:public"],
 )

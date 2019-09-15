@@ -30,9 +30,7 @@ from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.util.tf_export import tf_export
 
-__all__ = [
-    "LinearOperatorKronecker",
-]
+__all__ = ["LinearOperatorKronecker"]
 
 
 def _vec(x):
@@ -73,7 +71,7 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
   `op1 x op2 x .. opJ` (we omit parentheses as the Kronecker product is
   associative).
 
-  If `opj` has shape `batch_shape_j` + [M_j, N_j`, then the composed operator
+  If `opj` has shape `batch_shape_j + [M_j, N_j]`, then the composed operator
   will have shape equal to `broadcast_batch_shape + [prod M_j, prod N_j]`,
   where the product is over all operators.
 
@@ -84,10 +82,10 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
   operator = LinearOperatorKronecker([operator_1, operator_2])
 
   operator.to_dense()
-  ==> [[1., 2., 0., 0.],
-       [3., 4., 0., 0.],
-       [2., 4., 1., 2.],
-       [6., 8., 3., 4.]]
+  ==> [[1., 0., 2., 0.],
+       [2., 1., 4., 2.],
+       [3., 0., 4., 0.],
+       [6., 3., 8., 4.]]
 
   operator.shape
   ==> [4, 4]
@@ -100,18 +98,18 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
   ==> Shape [4, 2] Tensor
 
   # Create a [2, 3] batch of 4 x 5 linear operators.
-  matrix_45 = tf.random_normal(shape=[2, 3, 4, 5])
+  matrix_45 = tf.random.normal(shape=[2, 3, 4, 5])
   operator_45 = LinearOperatorFullMatrix(matrix)
 
   # Create a [2, 3] batch of 5 x 6 linear operators.
-  matrix_56 = tf.random_normal(shape=[2, 3, 5, 6])
+  matrix_56 = tf.random.normal(shape=[2, 3, 5, 6])
   operator_56 = LinearOperatorFullMatrix(matrix_56)
 
   # Compose to create a [2, 3] batch of 20 x 30 operators.
   operator_large = LinearOperatorKronecker([operator_45, operator_56])
 
   # Create a shape [2, 3, 20, 2] vector.
-  x = tf.random_normal(shape=[2, 3, 6, 2])
+  x = tf.random.normal(shape=[2, 3, 6, 2])
   operator_large.matmul(x)
   ==> Shape [2, 3, 30, 2] Tensor
   ```

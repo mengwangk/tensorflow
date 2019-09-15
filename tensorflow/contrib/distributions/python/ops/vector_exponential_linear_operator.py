@@ -108,7 +108,8 @@ class VectorExponentialLinearOperator(
   #### Examples
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   # Initialize a single 2-variate VectorExponential, supported on
   # {(x, y) in R^2 : x > 0, y > 0}.
@@ -190,7 +191,7 @@ class VectorExponentialLinearOperator(
     if not scale.dtype.is_floating:
       raise TypeError("`scale` parameter must have floating-point dtype.")
 
-    with ops.name_scope(name, values=[loc] + scale.graph_parents) as name:
+    with ops.name_scope(name, values=[loc]) as name:
       # Since expand_dims doesn't preserve constant-ness, we obtain the
       # non-dynamic value if possible.
       loc = ops.convert_to_tensor(loc, name="loc") if loc is not None else loc

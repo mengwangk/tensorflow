@@ -21,7 +21,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -42,9 +41,10 @@ namespace wav {
 // if (EncodeAudioAsS16LEWav(audio_buffer, 8000, 2, 4, &wav_string).ok()) {
 //   // Use wav_string.
 // }
+template <typename T>
 Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
                              size_t num_channels, size_t num_frames,
-                             string* wav_string);
+                             T* wav_string);
 
 // Decodes the little-endian signed 16-bit PCM WAV file data (aka LIN16
 // encoding) into a float Tensor. The channels are encoded as the lowest

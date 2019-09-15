@@ -22,9 +22,11 @@ import sys
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
+import tensorflow
 
 from tensorflow.python import debug as tf_debug
+
+tf = tensorflow.compat.v1
 
 FLAGS = None
 
@@ -100,4 +102,5 @@ if __name__ == "__main__":
       "--debug flag.")
 
   FLAGS, unparsed = parser.parse_known_args()
-  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  with tf.Graph().as_default():
+    tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

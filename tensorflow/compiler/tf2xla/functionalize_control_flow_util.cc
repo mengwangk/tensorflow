@@ -42,10 +42,47 @@ xla::StatusOr<Node*> BuildRetvalNode(Graph* graph, DataType type, int index) {
   const char* const kRetValOp = "_Retval";
   NodeDef ret_def;
   ret_def.set_op(kRetValOp);
-  ret_def.set_name(strings::StrCat(kRetValOp, index));
+  ret_def.set_name(absl::StrCat(kRetValOp, index));
   AddNodeAttr("T", type, &ret_def);
   AddNodeAttr("index", index, &ret_def);
   return AddNodeDefToGraph(ret_def, graph);
+}
+
+Status ExtractWhileLoopFrames(
+    const std::vector<ControlFlowInfo>& cf_info, const Graph* graph,
+    std::unordered_map<string, WhileLoopFrame>* frames) {
+  for (Node* node : graph->op_nodes()) {
+    const ControlFlowInfo& cf = cf_info[node->id()];
+
+    VLOG(2) << "node: " << node->name() << " (" << node->id()
+            << ") frame_name: " << cf.frame_name
+            << " frame: " << (cf.frame ? cf.frame->name() : "---")
+            << " parent_frame: "
+            << (cf.parent_frame ? cf.parent_frame->name() : "---");
+    TF_RET_CHECK(cf.frame != nullptr && cf.parent_frame != nullptr);
+
+    WhileLoopFrame& frame = (*frames)[cf.frame_name];
+    WhileLoopFrame* parent =
+        &(*frames)[cf_info[cf.parent_frame->id()].frame_name];
+    if (frame.parent == nullptr) {
+      frame.parent = parent;
+      frame.name = cf.frame_name;
+      ++parent->num_children;
+    }
+
+    if (IsEnter(node)) {
+      WhileLoopArg arg;
+      arg.enter = node;
+      TF_RETURN_IF_ERROR(GetNodeAttr(arg.enter->attrs(), "is_constant",
+                                     &arg.is_loop_invariant));
+      frame.args.push_back(arg);
+    } else if (IsLoopCond(node)) {
+      frame.loop_cond = node;
+    }
+    frame.nodes.insert(node);
+  }
+
+  return Status::OK();
 }
 
 // Check that the graph has no cycle containing the given node.

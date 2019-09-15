@@ -18,6 +18,7 @@ limitations under the License.
 #include <deque>
 
 #include "tensorflow/compiler/xla/service/call_graph.h"
+#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -96,7 +97,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
     if (it == subcomputation_hlo_to_new_hlo_.end()) {
       return NotFound(
           "Could not find mapping from subcomputation HLO %s to a cloned HLO.",
-          subcomputation_hlo->ToString().c_str());
+          subcomputation_hlo->ToString());
     }
     return it->second;
   }

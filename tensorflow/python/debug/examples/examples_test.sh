@@ -71,13 +71,13 @@ run
 exit
 EOF
 
-cat << EOF | ${DEBUG_ERRORS_BIN} --error=uninitialized_variable --debug --ui_type=readline
+cat << EOF | ${DEBUG_ERRORS_BIN} --error=uninitialized_variable --debug --ui_type=readline --use_random_config_path
 run
 ni -a -d -t v/read
 exit
 EOF
 
-cat << EOF | ${DEBUG_MNIST_BIN} --debug --max_steps=1 --fake_data --ui_type=readline
+cat << EOF | ${DEBUG_MNIST_BIN} --debug --max_steps=1 --fake_data --ui_type=readline --use_random_config_path
 run -t 1
 run --node_name_filter hidden --op_type_filter MatMul
 run -f has_inf_or_nan
@@ -87,7 +87,7 @@ EOF
 CUSTOM_DUMP_ROOT=$(mktemp -d)
 mkdir -p ${CUSTOM_DUMP_ROOT}
 
-cat << EOF | ${DEBUG_TFLEARN_IRIS_BIN} --debug --fake_data --train_steps=2 --dump_root="${CUSTOM_DUMP_ROOT}" --ui_type=readline
+cat << EOF | ${DEBUG_TFLEARN_IRIS_BIN} --debug --train_steps=2 --dump_root="${CUSTOM_DUMP_ROOT}" --ui_type=readline --use_random_config_path
 run -p
 run -f has_inf_or_nan
 EOF
@@ -99,8 +99,13 @@ if [[ -d "${CUSTOM_DUMP_ROOT}" ]]; then
 fi
 
 # Test debugging of tf.keras.
-cat << EOF | ${DEBUG_KERAS_BIN} --debug --ui_type=readline
+cat << EOF | ${DEBUG_KERAS_BIN} --debug --ui_type=readline --use_random_config_path
 run -f has_inf_or_nan
+EOF
+
+# Test debugging of tf.keras, with non-debug runs included.
+cat << EOF | ${DEBUG_KERAS_BIN} --debug --ui_type=readline --use_random_config_path
+run -t 10
 EOF
 
 # Test offline_analyzer.
@@ -115,7 +120,7 @@ OUTPUT=$(${OFFLINE_ANALYZER_BIN} 2>&1)
 set -e
 
 EXPECTED_OUTPUT="ERROR: dump_dir flag is empty."
-if [[ "${OUTPUT}" != "${EXPECTED_OUTPUT}" ]]; then
+if ! echo "${OUTPUT}" | grep -q "${EXPECTED_OUTPUT}"; then
   echo "ERROR: offline_analyzer output didn't match expectation: ${OUTPUT}" 1>&2
   echo "Expected output: ${EXPECTED_OUTPUT}"
   exit 1

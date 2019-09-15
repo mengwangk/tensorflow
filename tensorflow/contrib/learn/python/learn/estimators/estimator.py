@@ -404,7 +404,6 @@ class BaseEstimator(sklearn.BaseEstimator, evaluable.Evaluable,
   Users should not instantiate or subclass this class. Instead, use an
   `Estimator`.
   """
-  __metaclass__ = abc.ABCMeta
 
   # Note that for Google users, this is overridden with
   # learn_runner.EstimatorConfig.
@@ -1067,11 +1066,11 @@ class BaseEstimator(sklearn.BaseEstimator, evaluable.Evaluable,
       chief_hooks = []
       if (self._config.save_checkpoints_secs or
           self._config.save_checkpoints_steps):
-        saver_hook_exists = any([
+        saver_hook_exists = any(
             isinstance(h, basic_session_run_hooks.CheckpointSaverHook)
             for h in (all_hooks + model_fn_ops.training_hooks + chief_hooks +
                       model_fn_ops.training_chief_hooks)
-        ])
+        )
         if not saver_hook_exists:
           chief_hooks = [
               basic_session_run_hooks.CheckpointSaverHook(
@@ -1089,11 +1088,21 @@ class BaseEstimator(sklearn.BaseEstimator, evaluable.Evaluable,
           chief_only_hooks=chief_hooks + model_fn_ops.training_chief_hooks,
           save_checkpoint_secs=0,  # Saving is handled by a hook.
           save_summaries_steps=self._config.save_summary_steps,
+          max_wait_secs=self._config.session_creation_timeout_secs,
           config=self._session_config) as mon_sess:
         loss = None
         while not mon_sess.should_stop():
           _, loss = mon_sess.run([model_fn_ops.train_op, model_fn_ops.loss])
       return loss
+
+  def latest_checkpoint(self):
+    """Finds the filename of the latest saved checkpoint file in `model_dir`.
+
+    Returns:
+      The full path to the latest checkpoint or `None` if no checkpoint was
+      found.
+    """
+    return checkpoint_management.latest_checkpoint(self.model_dir)
 
 
 def _identity_feature_engineering_fn(features, labels):
@@ -1433,13 +1442,12 @@ class Estimator(BaseEstimator):
                            'must specify no transforms.')
         untransformed_tags = graph_rewrite_specs[0].tags
 
-        # TODO(soergel): switch to main_op or otherwise update when dust settles
         builder.add_meta_graph_and_variables(
             session,
             untransformed_tags,
             signature_def_map=signature_def_map,
             assets_collection=ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS),
-            legacy_init_op=init_op,
+            main_op=init_op,
             strip_default_attrs=strip_default_attrs)
 
     # pylint: disable=protected-access
@@ -1495,7 +1503,7 @@ class Estimator(BaseEstimator):
 # pylint: disable=protected-access
 class SKCompat(sklearn.BaseEstimator):
   """Scikit learn wrapper for TensorFlow Learn Estimator.
-  
+
   THIS CLASS IS DEPRECATED. See
   [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
   for general migration instructions.

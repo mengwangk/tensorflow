@@ -61,7 +61,8 @@ class Logistic(distribution.Distribution):
   Examples of initialization of one or a batch of distributions.
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   # Define a single scalar Logistic distribution.
   dist = tfd.Logistic(loc=0., scale=3.)
@@ -172,7 +173,7 @@ class Logistic(distribution.Distribution):
     return constant_op.constant([], dtype=dtypes.int32)
 
   def _event_shape(self):
-    return tensor_shape.scalar()
+    return tensor_shape.TensorShape([])
 
   def _sample_n(self, n, seed=None):
     # Uniform variates must be sampled from the open-interval `(0, 1)` rather

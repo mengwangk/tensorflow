@@ -59,7 +59,7 @@ class HloLivenessAnalysisTest : public HloTestBase {
 
 // Test that add instruction at entry root is live at all output shape indices.
 TEST_F(HloLivenessAnalysisTest, AddAtEntryRoot) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule SimpleModule
   ENTRY SimpleComputation {
     constant.1 = s32[] constant(0)
@@ -75,7 +75,7 @@ TEST_F(HloLivenessAnalysisTest, AddAtEntryRoot) {
 
 // Test that a dead add instruction is marked as dead by analysis.
 TEST_F(HloLivenessAnalysisTest, DeadAdd) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule SimpleModule
   ENTRY SimpleComputation {
     constant.1 = s32[] constant(0)
@@ -94,7 +94,7 @@ TEST_F(HloLivenessAnalysisTest, DeadAdd) {
 // Test that all output shape indices of entry root tuple (and defining
 // instruction in its output) are marked live.
 TEST_F(HloLivenessAnalysisTest, TupleAtEntryRoot) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule SimpleModule
   ENTRY SimpleComputation {
     constant.1 = s32[] constant(0)
@@ -113,7 +113,7 @@ TEST_F(HloLivenessAnalysisTest, TupleAtEntryRoot) {
 // Tests that all outputs of nested tuple and entry root (and defining
 // instruction values appearing in its output) are marked live.
 TEST_F(HloLivenessAnalysisTest, NestedTupleAtEntryRoot) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule SimpleModule
   ENTRY SimpleComputation {
     constant.1 = s32[] constant(1)
@@ -140,7 +140,7 @@ TEST_F(HloLivenessAnalysisTest, NestedTupleAtEntryRoot) {
 // Tests that GTE at entry root of Tuple instruction only propgates liveness
 // to the live elements in tuple.
 TEST_F(HloLivenessAnalysisTest, GteOfTuple) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule SimpleModule
   ENTRY SimpleComputation {
     constant.1 = s32[] constant(0)
@@ -162,7 +162,7 @@ TEST_F(HloLivenessAnalysisTest, GteOfTuple) {
 // Tests that GTE at entry root of nested Tuple instruction only propgates
 // liveness to the live elements in tuple.
 TEST_F(HloLivenessAnalysisTest, GteOfNestedTuple) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule SimpleModule
   ENTRY SimpleComputation {
     constant.1 = s32[] constant(0)
@@ -199,7 +199,7 @@ TEST_F(HloLivenessAnalysisTest, GteOfNestedTuple) {
 // Tests that GTE of GTE (at entry root) of nested Tuple instruction only
 // propgates liveness to the live elements in tuple.
 TEST_F(HloLivenessAnalysisTest, GteOfGteOfNestedTuple) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule SimpleModule
   ENTRY SimpleComputation {
     constant.1 = s32[] constant(0)
@@ -240,7 +240,7 @@ TEST_F(HloLivenessAnalysisTest, GteOfGteOfNestedTuple) {
 
 // Test that live/dead while tuple elements are marked live/dead correctly.
 TEST_F(HloLivenessAnalysisTest, WhileWithDeadTupleElement) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule SimpleLoop
   SimpleLoop.body {
     loop_var.1 = (s32[], s32[3]{0}) parameter(0)
@@ -255,7 +255,7 @@ TEST_F(HloLivenessAnalysisTest, WhileWithDeadTupleElement) {
     loop_var.2 = (s32[], s32[3]{0}) parameter(0)
     get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
     constant.2 = s32[] constant(5)
-    ROOT less-than = pred[] less-than(get-tuple-element.3, constant.2)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
   }
   ENTRY SimpleLoop {
     constant.3 = s32[] constant(0)
@@ -291,7 +291,7 @@ TEST_F(HloLivenessAnalysisTest, WhileWithDeadTupleElement) {
 // Tests that a tuple element live in while.cond computation, propagates
 // liveness to while.body.root/while.result/while.operand (where it is unused).
 TEST_F(HloLivenessAnalysisTest, WhileCondPropagatesLiveness) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule SimpleLoop
   SimpleLoop.body {
     loop_var.1 = (s32[], s32[3]{0}) parameter(0)
@@ -308,7 +308,7 @@ TEST_F(HloLivenessAnalysisTest, WhileCondPropagatesLiveness) {
     get-tuple-element.4 = s32[] get-tuple-element(loop_var.2), index=1
     add.1 = s32[] add(get-tuple-element.3, get-tuple-element.4)
     constant.2 = s32[] constant(5)
-    ROOT less-than = pred[] less-than(add.1, constant.2)
+    ROOT less-than = pred[] compare(add.1, constant.2), direction=LT
   }
   ENTRY SimpleLoop {
     constant.3 = s32[] constant(0)
@@ -345,7 +345,7 @@ TEST_F(HloLivenessAnalysisTest, WhileCondPropagatesLiveness) {
 // Tests that a use of while.result{0} propagates liveness to
 // while.body.param{1} to while.body.root{1}, and then to while.body.param{2}.
 TEST_F(HloLivenessAnalysisTest, WhileWithLiveTupleElements) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule SimpleLoop
   SimpleLoop.body {
     loop_var.1 = (s32[], s32[], s32[]) parameter(0)
@@ -360,7 +360,7 @@ TEST_F(HloLivenessAnalysisTest, WhileWithLiveTupleElements) {
     loop_var.2 = (s32[], s32[], s32[]) parameter(0)
     get-tuple-element.4 = s32[] get-tuple-element(loop_var.2), index=0
     constant.1 = s32[] constant(5)
-    ROOT less-than = pred[] less-than(get-tuple-element.4, constant.1)
+    ROOT less-than = pred[] compare(get-tuple-element.4, constant.1), direction=LT
   }
   ENTRY SimpleLoop {
     constant.2 = s32[] constant(0)
@@ -396,6 +396,90 @@ TEST_F(HloLivenessAnalysisTest, WhileWithLiveTupleElements) {
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "loop_var.1"), {0}));
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "loop_var.1"), {1}));
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "loop_var.1"), {2}));
+}
+
+TEST_F(HloLivenessAnalysisTest, WhileWithOutfeed) {
+  auto module = ParseAndReturnUnverifiedModule(R"(
+  HloModule OutfeedLoop
+  WhileBody {
+    body_param = (s32[]) parameter(0)
+    token0 = token[] after-all()
+    constant.2 = s32[] constant(2)
+    outfeed_tuple = (s32[]) outfeed(constant.2, token0)
+    get-tuple-element.1 = s32[] get-tuple-element(body_param), index=0
+    constant.1 = s32[] constant(1)
+    add = s32[] add(get-tuple-element.1, constant.1)
+    ROOT tuple = (s32[]) tuple(add)
+  }
+  WhileCondition {
+    cond_param = (s32[]) parameter(0)
+    get-tuple-element.3 = s32[] get-tuple-element(cond_param), index=0
+    constant.2 = s32[] constant(10)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
+  }
+  ENTRY SimpleLoop {
+    constant.3 = s32[] constant(0)
+    tuple.1 = (s32[]) tuple(constant.3)
+    while = (s32[]) while(tuple.1), condition=WhileCondition,
+      body=WhileBody
+    ROOT rtuple = () tuple()
+  })")
+                    .ValueOrDie();
+
+  const HloLivenessAnalysis& liveness = RunLiveness(module.get());
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "add"), {}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "constant.3"), {}));
+}
+
+TEST_F(HloLivenessAnalysisTest, NestedWhileWithOutfeed) {
+  auto module = ParseAndReturnUnverifiedModule(R"(
+  HloModule OutfeedLoop
+  InnerWhileBody {
+    body_param = (s32[]) parameter(0)
+    token0 = token[] after-all()
+    constant.2 = s32[] constant(2)
+    outfeed_tuple = (s32[]) outfeed(constant.2, token0)
+    get-tuple-element.1 = s32[] get-tuple-element(body_param), index=0
+    constant.1 = s32[] constant(1)
+    add = s32[] add(get-tuple-element.1, constant.1)
+    ROOT tuple = (s32[]) tuple(add)
+  }
+  InnerWhileCondition {
+    cond_param = (s32[]) parameter(0)
+    get-tuple-element.3 = s32[] get-tuple-element(cond_param), index=0
+    constant.2 = s32[] constant(10)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
+  }
+  OuterWhileCondition {
+    cond_param.2 = (s32[]) parameter(0)
+    get-tuple-element.5 = s32[] get-tuple-element(cond_param.2), index=0
+    constant.5 = s32[] constant(5)
+    ROOT less-than.2 = pred[] compare(get-tuple-element.5, constant.5), direction=LT
+  }
+  OuterWhileBody {
+    body_param.2 = (s32[]) parameter(0)
+    get-tuple-element.8 = s32[] get-tuple-element(body_param.2), index=0
+    constant.6 = s32[] constant(0)
+    tuple.2 = (s32[]) tuple(constant.6)
+    inner_while = (s32[]) while(tuple.2), condition=InnerWhileCondition,
+      body=InnerWhileBody
+    constant.7 = s32[] constant(1)
+    add.2 = s32[] add(get-tuple-element.8, constant.7)
+    ROOT rtuple = (s32[]) tuple(add.2)
+  }
+  ENTRY SimpleLoop {
+    constant.3 = s32[] constant(0)
+    tuple.1 = (s32[]) tuple(constant.3)
+    while = (s32[]) while(tuple.1), condition=OuterWhileCondition,
+      body=OuterWhileBody
+    ROOT rtuple = () tuple()
+  })")
+                    .ValueOrDie();
+
+  const HloLivenessAnalysis& liveness = RunLiveness(module.get());
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "add"), {}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "add.2"), {}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "constant.3"), {}));
 }
 
 }  // namespace

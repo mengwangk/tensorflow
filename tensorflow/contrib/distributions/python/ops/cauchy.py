@@ -63,7 +63,8 @@ class Cauchy(distribution.Distribution):
   Examples of initialization of one or a batch of distributions.
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   # Define a single scalar Cauchy distribution.
   dist = tfd.Cauchy(loc=0., scale=3.)
@@ -172,7 +173,7 @@ class Cauchy(distribution.Distribution):
     return constant_op.constant([], dtype=dtypes.int32)
 
   def _event_shape(self):
-    return tensor_shape.scalar()
+    return tensor_shape.TensorShape([])
 
   def _sample_n(self, n, seed=None):
     shape = array_ops.concat([[n], self.batch_shape_tensor()], 0)

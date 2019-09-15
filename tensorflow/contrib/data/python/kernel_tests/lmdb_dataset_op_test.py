@@ -20,23 +20,31 @@ from __future__ import print_function
 
 import os
 import shutil
+import sys
 
 from tensorflow.contrib.data.python.ops import readers
+from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 prefix_path = "tensorflow/core/lib"
 
 
-class LMDBDatasetTest(test.TestCase):
+@test_util.run_v1_only("deprecated API, no eager or V2 test coverage")
+class LMDBDatasetTest(test_base.DatasetTestBase):
 
   def setUp(self):
     super(LMDBDatasetTest, self).setUp()
     # Copy database out because we need the path to be writable to use locks.
-    path = os.path.join(prefix_path, "lmdb", "testdata", "data.mdb")
+    # The on-disk format of an LMDB database is different on big-endian
+    # machines, because LMDB is a memory-mapped database.
+    db_file = "data.mdb" if sys.byteorder == "little" else "data_bigendian.mdb"
+    path = os.path.join(prefix_path, "lmdb", "testdata", db_file)
     self.db_path = os.path.join(self.get_temp_dir(), "data.mdb")
     shutil.copy(path, self.db_path)
 
@@ -47,11 +55,11 @@ class LMDBDatasetTest(test.TestCase):
     num_repeats = 2
 
     dataset = readers.LMDBDataset(filenames).repeat(num_repeats)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for _ in range(num_repeats):  # Dataset is repeated.
         for i in range(10):  # 10 records.

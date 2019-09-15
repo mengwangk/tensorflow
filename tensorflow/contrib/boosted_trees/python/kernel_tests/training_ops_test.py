@@ -142,7 +142,8 @@ def _gen_categorical_split_info(fc, feat_id, left_weight, right_weight):
 
 
 def _get_bias_update(grads, hess):
-  return array_ops.where(hess > 0, -grads / hess, array_ops.zeros_like(grads))
+  return array_ops.where_v2(hess > 0, -grads / hess,
+                            array_ops.zeros_like(grads))
 
 
 class CenterTreeEnsembleBiasOpTest(test_util.TensorFlowTestCase):
@@ -411,7 +412,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
   def testGrowEmptyEnsembleObliviousCase(self):
     """Test growing an empty ensemble in the oblivious case."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       # Create empty ensemble.
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       tree_ensemble_handle = model_ops.tree_ensemble_variable(
@@ -1620,7 +1621,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
   def testGrowEnsembleTreeLayerByLayerObliviousCase(self):
     """Test growing an existing ensemble with the last tree not finalized."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       # Create existing ensemble with one root split
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       text_format.Merge(
@@ -1810,7 +1811,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
   def testGrowEnsembleWithEmptyNodesMiddleCase(self):
     """Test case: The middle existing leaves don't have examples."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       text_format.Merge(
           """
@@ -2071,7 +2072,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
   def testGrowEnsembleWithEmptyNodesBorderCase(self):
     """Test case: The first and last existing leaves don't have examples."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       text_format.Merge(
           """

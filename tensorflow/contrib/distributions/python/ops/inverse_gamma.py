@@ -84,12 +84,14 @@ class InverseGamma(distribution.Distribution):
   examples for details.
 
   WARNING: This distribution may draw 0-valued samples for small concentration
-  values. See note in `tf.random_gamma` docstring.
+  values. See note in `tf.random.gamma` docstring.
 
   #### Examples
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
+
   dist = tfd.InverseGamma(concentration=3.0, rate=2.0)
   dist2 = tfd.InverseGamma(concentration=[3.0, 4.0], rate=[2.0, 3.0])
   ```
@@ -185,10 +187,10 @@ class InverseGamma(distribution.Distribution):
     return constant_op.constant([], dtype=dtypes.int32)
 
   def _event_shape(self):
-    return tensor_shape.scalar()
+    return tensor_shape.TensorShape([])
 
   @distribution_util.AppendDocstring(
-      """Note: See `tf.random_gamma` docstring for sampling details and
+      """Note: See `tf.random.gamma` docstring for sampling details and
       caveats.""")
   def _sample_n(self, n, seed=None):
     return 1. / random_ops.random_gamma(
@@ -234,7 +236,7 @@ class InverseGamma(distribution.Distribution):
           self.batch_shape_tensor(),
           np.array(np.nan, dtype=self.dtype.as_numpy_dtype()),
           name="nan")
-      return array_ops.where(self.concentration > 1., mean, nan)
+      return array_ops.where_v2(self.concentration > 1., mean, nan)
     else:
       return control_flow_ops.with_dependencies([
           check_ops.assert_less(
@@ -247,15 +249,15 @@ class InverseGamma(distribution.Distribution):
       `self.allow_nan_stats` is `False`, an exception will be raised rather
       than returning `NaN`.""")
   def _variance(self):
-    var = (math_ops.square(self.rate)
-           / math_ops.square(self.concentration - 1.)
-           / (self.concentration - 2.))
+    var = (
+        math_ops.square(self.rate) / math_ops.squared_difference(
+            self.concentration, 1.) / (self.concentration - 2.))
     if self.allow_nan_stats:
       nan = array_ops.fill(
           self.batch_shape_tensor(),
           np.array(np.nan, dtype=self.dtype.as_numpy_dtype()),
           name="nan")
-      return array_ops.where(self.concentration > 2., var, nan)
+      return array_ops.where_v2(self.concentration > 2., var, nan)
     else:
       return control_flow_ops.with_dependencies([
           check_ops.assert_less(

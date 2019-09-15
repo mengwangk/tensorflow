@@ -13,20 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <ctype.h>
-
 #include "tensorflow/compiler/xla/service/indexed_array_analysis.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "absl/strings/ascii.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 
 namespace xla {
 namespace {
-class IndexedArrayAnalysisTest : public HloVerifiedTestBase {
- public:
-  IndexedArrayAnalysisTest()
-      : HloVerifiedTestBase(/*layout_sensitive=*/false,
-                            /*allow_mixed_precision=*/false) {}
-
+class IndexedArrayAnalysisTest : public HloTestBase {
  protected:
   void AssertArrayForRootExpressionIs(const string& hlo_text,
                                       const string& root_expression) {
@@ -48,7 +42,7 @@ class IndexedArrayAnalysisTest : public HloVerifiedTestBase {
     string result;
 
     for (char c : text) {
-      if (!isspace(c)) {
+      if (!absl::ascii_isspace(c)) {
         result.push_back(c);
       } else if (!result.empty() && result.back() != ' ') {
         result.push_back(' ');
@@ -66,12 +60,12 @@ class IndexedArrayAnalysisTest : public HloVerifiedTestBase {
                                           const string& root_expression,
                                           bool print_constants) {
     IndexedArrayAnalysis indexed_tensor_analysis;
-    ParseAndVerifyModule(hlo_text);
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                            ParseAndReturnVerifiedModule(hlo_text));
 
-    TF_ASSERT_OK_AND_ASSIGN(
-        IndexedArrayAnalysis::Array* const array_result,
-        indexed_tensor_analysis.GetArrayFor(
-            module().entry_computation()->root_instruction()));
+    TF_ASSERT_OK_AND_ASSIGN(IndexedArrayAnalysis::Array* const array_result,
+                            indexed_tensor_analysis.GetArrayFor(
+                                m->entry_computation()->root_instruction()));
     string string_result = CanonicalizeWhitespace(
         indexed_tensor_analysis.ToString(array_result, print_constants));
     LOG(INFO) << string_result;
@@ -104,7 +98,7 @@ TEST_F(IndexedArrayAnalysisTest, SimpleOneToOneConstantGather) {
 HloModule SimpleGather
 
 ENTRY main {
-  operand = s32[3,3] constant(s32[3,3]{{1,2,3},{1,2,3},{1,2,3}})
+  operand = s32[3,3] constant({{1,2,3},{1,2,3},{1,2,3}})
   indices = s32[5] parameter(0)
   ROOT gather = s32[5,3] gather(operand, indices),
       offset_dims={1},
@@ -124,7 +118,7 @@ TEST_F(IndexedArrayAnalysisTest, GatherIsNotScalarIndexed0) {
 HloModule SimpleGather
 
 ENTRY main {
-  operand = s32[3,3] constant(s32[3,3]{{1,2,3},{1,2,3},{1,2,3}})
+  operand = s32[3,3] constant({{1,2,3},{1,2,3},{1,2,3}})
   indices = s32[5,2] parameter(0)
   ROOT gather = s32[5] gather(operand, indices),
       offset_dims={},
@@ -200,7 +194,7 @@ TEST_F(IndexedArrayAnalysisTest, GatherOfGather_OneToOne) {
 HloModule SimpleGather
 
 ENTRY main {
-  operand = s32[3,3] constant(s32[3,3]{{1,2,3},{1,2,3},{1,2,3}})
+  operand = s32[3,3] constant({{1,2,3},{1,2,3},{1,2,3}})
   indices_a = s32[5] parameter(0)
   indices_b = s32[2] parameter(1)
   gather_a = s32[5,3] gather(operand, indices_a),
@@ -314,7 +308,7 @@ TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather0) {
 HloModule ReshapeOfGather
 
 ENTRY main {
-  operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,2,3,4},{1,2,3,4}})
+  operand = s32[3,4] constant({{1,2,3,4},{1,2,3,4},{1,2,3,4}})
   indices = s32[5] parameter(0)
   gather = s32[5,4] gather(operand, indices),
       offset_dims={1},
@@ -335,7 +329,7 @@ TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather1) {
 HloModule ReshapeOfGather
 
 ENTRY main {
-  operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,2,3,4},{1,2,3,4}})
+  operand = s32[3,4] constant({{1,2,3,4},{1,2,3,4},{1,2,3,4}})
   indices = s32[5,7] parameter(0)
   gather = s32[5,4,7] gather(operand, indices),
       offset_dims={1},
@@ -357,7 +351,7 @@ TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather2) {
 HloModule ReshapeOfGather
 
 ENTRY main {
-  operand = s32[3,2,6] constant(s32[3,2,6]{
+  operand = s32[3,2,6] constant({
       {{1,2,3,4,5,6},{1,2,3,4,5,6}},
       {{1,2,3,4,5,6},{1,2,3,4,5,6}},
       {{1,2,3,4,5,6},{1,2,3,4,5,6}}})
@@ -382,7 +376,7 @@ TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather3) {
 HloModule ReshapeOfGather
 
 ENTRY main {
-  operand = s32[2,6] constant(s32[2,6]{
+  operand = s32[2,6] constant({
       {1,2,3,4,5,6},{1,2,3,4,5,6}})
   indices = s32[1] parameter(0)
   gather = s32[1,6] gather(operand, indices),
@@ -410,7 +404,7 @@ TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather4) {
 HloModule ReshapeOfGather
 
 ENTRY main {
-  operand = s32[2,3]{1,0} constant(s32[2,3] { { 1, 2, 3 }, { 1, 2, 3 } })
+  operand = s32[2,3]{1,0} constant({ { 1, 2, 3 }, { 1, 2, 3 } })
 
   i.0 = s64[1,3]{1,0} parameter(0)
   g.0 = s32[1,3,3]{2,1,0} gather(operand, i.0), offset_dims={2},
@@ -443,7 +437,7 @@ TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather5) {
 HloModule ReshapeOfGather
 
 ENTRY main {
-  operand = s32[1,6] constant(s32[1,6]{{1,2,3,4,5,6}})
+  operand = s32[1,6] constant({{1,2,3,4,5,6}})
   indices = s32[1] parameter(0)
   gather = s32[1,6] gather(operand, indices),
       offset_dims={1},
@@ -470,7 +464,7 @@ TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather6) {
 HloModule ReshapeOfGather
 
 ENTRY main {
-  operand = s32[1,2,6] constant(s32[1,2,6]{{
+  operand = s32[1,2,6] constant({{
       {1,2,3,4,5,6},{1,2,3,4,5,6}}})
   indices = s32[1] parameter(0)
   gather = s32[1,1,6] gather(operand, indices),
@@ -486,8 +480,8 @@ ENTRY main {
   const char* expected_root_expression = R"(
 (scalar-indexed-const
   (constant s32[2,1,1,1,6] s32[2,1,1,1,6] {
-    { /*i0=0*/ { /*i1=0*/ { /*i2=0*/ {1, 2, 3, 4, 5, 6} } } },
-    { /*i0=1*/ { /*i1=0*/ { /*i2=0*/ {1, 2, 3, 4, 5, 6} } } } })
+    { /*i0=0*/ { /*i1=0*/ { /*i2=0*/ { 1, 2, 3, 4, 5, 6 } } } },
+    { /*i0=1*/ { /*i1=0*/ { /*i2=0*/ { 1, 2, 3, 4, 5, 6 } } } } })
   (reshape %indices to s32[])
   0->[])
 )";
@@ -501,7 +495,7 @@ TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather7) {
 HloModule ReshapeOfGather
 
 ENTRY main {
-  operand = s32[2,6] constant(s32[2,6]{
+  operand = s32[2,6] constant({
       {1,2,3,4,5,6},{1,2,3,4,5,6}})
   indices = s32[1,5] parameter(0)
   gather = s32[1,5,6] gather(operand, indices),
@@ -517,8 +511,8 @@ ENTRY main {
   const char* expected_root_expression = R"(
 (scalar-indexed-const
   (constant s32[2,1,1,6] s32[2,1,1,6] {
-    { /*i0=0*/ { /*i1=0*/ {1, 2, 3, 4, 5, 6} } },
-    { /*i0=1*/ { /*i1=0*/ {1, 2, 3, 4, 5, 6} } } })
+    { /*i0=0*/ { /*i1=0*/ { 1, 2, 3, 4, 5, 6 } } },
+    { /*i0=1*/ { /*i1=0*/ { 1, 2, 3, 4, 5, 6 } } } })
   (reshape %indices to s32[5])
   0->[2])
 )";
@@ -532,7 +526,7 @@ TEST_F(IndexedArrayAnalysisTest, ReshapeOfGatherNoFold0) {
 HloModule ReshapeOfGather
 
 ENTRY main {
-  operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,2,3,4},{1,2,3,4}})
+  operand = s32[3,4] constant({{1,2,3,4},{1,2,3,4},{1,2,3,4}})
   indices = s32[5,6] parameter(0)
   gather = s32[5,4,6] gather(operand, indices),
       offset_dims={1},
@@ -561,7 +555,7 @@ TEST_F(IndexedArrayAnalysisTest, ReshapeOfGatherNoFold1) {
 HloModule ReshapeOfGather
 
 ENTRY main {
-  operand = s32[3,5,2] constant(s32[3,5,2]{
+  operand = s32[3,5,2] constant({
       {{1,2},{3,4},{5,6},{7,8},{9,10}},
       {{1,2},{3,4},{5,6},{7,8},{9,10}},
       {{1,2},{3,4},{5,6},{7,8},{9,10}}})
@@ -593,7 +587,7 @@ TEST_F(IndexedArrayAnalysisTest, ReshapeOfGatherNoFold2) {
 HloModule ReshapeOfGather
 
 ENTRY main {
-  operand = s32[3,4,1] constant(s32[3,4,1]{
+  operand = s32[3,4,1] constant({
     {{1},{2},{3},{4}},
     {{1},{2},{3},{4}},
     {{1},{2},{3},{4}}})
@@ -625,7 +619,7 @@ TEST_F(IndexedArrayAnalysisTest, UnaryOpOfGather) {
 HloModule UnaryOpOfGather
 
 ENTRY main {
-  operand = f32[3,4] constant(f32[3,4]{{1,2,3,4},{1,3,2,4},{4,3,2,1}})
+  operand = f32[3,4] constant({{1,2,3,4},{1,3,2,4},{4,3,2,1}})
   indices = s32[5] parameter(0)
   gather = f32[5,4] gather(operand, indices),
       offset_dims={1},
@@ -650,7 +644,7 @@ TEST_F(IndexedArrayAnalysisTest, AddBroadcastedScalarWithGather) {
 HloModule AddBroadcastedScalarWithGather
 
 ENTRY main {
-  gather_operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,3,2,4},{4,3,2,1}})
+  gather_operand = s32[3,4] constant({{1,2,3,4},{1,3,2,4},{4,3,2,1}})
   constant = s32[] constant(5)
   constant_broadcasted = s32[5,4] broadcast(constant), dimensions={}
   indices = s32[5] parameter(0)
@@ -678,7 +672,7 @@ TEST_F(IndexedArrayAnalysisTest,
 HloModule SubtractBroadcastedScalarWithGather
 
 ENTRY main {
-  gather_operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,3,2,4},{4,3,2,1}})
+  gather_operand = s32[3,4] constant({{1,2,3,4},{1,3,2,4},{4,3,2,1}})
   constant = s32[] constant(5)
   constant_broadcasted = s32[5,4] broadcast(constant), dimensions={}
   indices = s32[5] parameter(0)
@@ -706,7 +700,7 @@ TEST_F(IndexedArrayAnalysisTest,
 HloModule SubtractBroadcastedScalarWithGather
 
 ENTRY main {
-  gather_operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,3,2,4},{4,3,2,1}})
+  gather_operand = s32[3,4] constant({{1,2,3,4},{1,3,2,4},{4,3,2,1}})
   constant = s32[] constant(5)
   constant_broadcasted = s32[5,4] broadcast(constant), dimensions={}
   indices = s32[5] parameter(0)
@@ -733,7 +727,7 @@ TEST_F(IndexedArrayAnalysisTest, AddBroadcastedVectorWithGather) {
 HloModule AddBroadcastedVectorWithGather
 
 ENTRY main {
-  gather_operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,3,2,4},{4,3,2,1}})
+  gather_operand = s32[3,4] constant({{1,2,3,4},{1,3,2,4},{4,3,2,1}})
   constant_vect = s32[4] constant({10,11,12,13})
   constant_broadcasted = s32[5,4] broadcast(constant_vect), dimensions={1}
   indices = s32[5] parameter(0)
@@ -760,7 +754,7 @@ TEST_F(IndexedArrayAnalysisTest, AddBroadcastedVectorWithGather_Negative) {
 HloModule AddBroadcastedVectorWithGather
 
 ENTRY main {
-  gather_operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,3,2,4},{4,3,2,1}})
+  gather_operand = s32[3,4] constant({{1,2,3,4},{1,3,2,4},{4,3,2,1}})
   constant_vect = s32[5] constant({10,11,12,13,14})
   constant_broadcasted = s32[5,4] broadcast(constant_vect), dimensions={0}
   indices = s32[5] parameter(0)
@@ -809,8 +803,8 @@ TEST_F(IndexedArrayAnalysisTest, DotOpBasic_0) {
 HloModule DotOp
 
 ENTRY main {
-  gather_operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{5,6,7,8},{9,10,11,12}})
-  dot_rhs_constant = s32[4,3] constant(s32[4,3]{{1,2,3},{4,5,6},{7,8,9},{10,11,12}})
+  gather_operand = s32[3,4] constant({{1,2,3,4},{5,6,7,8},{9,10,11,12}})
+  dot_rhs_constant = s32[4,3] constant({{1,2,3},{4,5,6},{7,8,9},{10,11,12}})
   indices = s32[5] parameter(0)
   dot_lhs = s32[5,4] gather(gather_operand, indices),
       offset_dims={1},
@@ -836,8 +830,8 @@ TEST_F(IndexedArrayAnalysisTest, DotOpBasic_1) {
 HloModule DotOp
 
 ENTRY main {
-  gather_operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{5,6,7,8},{9,10,11,12}})
-  dot_rhs_constant = s32[3,3] constant(s32[3,3]{{1,2,3},{4,5,6},{7,8,9}})
+  gather_operand = s32[3,4] constant({{1,2,3,4},{5,6,7,8},{9,10,11,12}})
+  dot_rhs_constant = s32[3,3] constant({{1,2,3},{4,5,6},{7,8,9}})
   indices = s32[5] parameter(0)
   dot_lhs = s32[3,5] gather(gather_operand, indices),
       offset_dims={0},
@@ -864,8 +858,8 @@ TEST_F(IndexedArrayAnalysisTest, DotOpBasic_2) {
 HloModule DotOp
 
 ENTRY main {
-  gather_operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{5,6,7,8},{9,10,11,12}})
-  dot_lhs_constant = s32[4,3] constant(s32[4,3]{{1,2,3},{4,5,6},{7,8,9},{10,11,12}})
+  gather_operand = s32[3,4] constant({{1,2,3,4},{5,6,7,8},{9,10,11,12}})
+  dot_lhs_constant = s32[4,3] constant({{1,2,3},{4,5,6},{7,8,9},{10,11,12}})
   indices = s32[5] parameter(0)
   dot_rhs = s32[3,5] gather(gather_operand, indices),
       offset_dims={0},
@@ -893,8 +887,8 @@ TEST_F(IndexedArrayAnalysisTest, DotOpBasic_3) {
 HloModule DotOp
 
 ENTRY main {
-  gather_operand = s32[4,3] constant(s32[4,3]{{1,2,3},{4,5,6},{7,8,9},{10,11,12}})
-  dot_lhs_constant = s32[4,3] constant(s32[4,3]{{1,2,3},{4,5,6},{7,8,9},{10,11,12}})
+  gather_operand = s32[4,3] constant({{1,2,3},{4,5,6},{7,8,9},{10,11,12}})
+  dot_lhs_constant = s32[4,3] constant({{1,2,3},{4,5,6},{7,8,9},{10,11,12}})
   indices = s32[5] parameter(0)
   dot_rhs = s32[5,3] gather(gather_operand, indices),
       offset_dims={1},
@@ -922,8 +916,8 @@ TEST_F(IndexedArrayAnalysisTest, DotOpWithBatch) {
 HloModule DotOp
 
 ENTRY main {
-  gather_operand = s32[2,3,2] constant(s32[2,3,2]{{{1,2},{3,4},{5,6}},{{7,8},{9,10},{11,12}}})
-  dot_lhs_constant = s32[2,2,3] constant(s32[2,2,3]{{{1,2,3},{4,5,6}},{{7,8,9},{10,11,12}}})
+  gather_operand = s32[2,3,2] constant({{{1,2},{3,4},{5,6}},{{7,8},{9,10},{11,12}}})
+  dot_lhs_constant = s32[2,2,3] constant({{{1,2,3},{4,5,6}},{{7,8,9},{10,11,12}}})
   indices = s32[4] parameter(0)
   dot_rhs = s32[2,3,4] gather(gather_operand, indices),
       offset_dims={0,1},
@@ -953,8 +947,8 @@ TEST_F(IndexedArrayAnalysisTest, DotOpNegative) {
 HloModule DotOp
 
 ENTRY main {
-  gather_operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{5,6,7,8},{9,10,11,12}})
-  dot_rhs_constant = s32[2,3] constant(s32[2,3]{{1,2,3},{4,5,6}})
+  gather_operand = s32[3,4] constant({{1,2,3,4},{5,6,7,8},{9,10,11,12}})
+  dot_rhs_constant = s32[2,3] constant({{1,2,3},{4,5,6}})
   indices = s32[2] parameter(0)
   dot_lhs = s32[3,2] gather(gather_operand, indices),
       offset_dims={0},

@@ -39,9 +39,9 @@ def get_empty_tensors(gradient_shape, hessian_shape):
   empty_hess_shape = [1] + hessian_shape.as_list()
   empty_grad_shape = [1] + gradient_shape.as_list()
 
-  empty_gradients = constant_op.constant(
+  empty_gradients = constant_op.constant_v1(
       [], dtype=dtypes.float32, shape=empty_grad_shape)
-  empty_hessians = constant_op.constant(
+  empty_hessians = constant_op.constant_v1(
       [], dtype=dtypes.float32, shape=empty_hess_shape)
 
   return empty_gradients, empty_hessians
@@ -50,7 +50,7 @@ def get_empty_tensors(gradient_shape, hessian_shape):
 class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
 
   def testGenerateFeatureSplitCandidates(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # The data looks like the following:
       # Example |  Gradients    | Partition | Dense Quantile |
       # i0      |  (0.2, 0.12)  | 0         | 1              |
@@ -63,8 +63,8 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
       partition_ids = array_ops.constant([0, 0, 0, 1], dtype=dtypes.int32)
       class_id = -1
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       split_handler = ordinal_split_handler.DenseSplitHandler(
           l1_regularization=0.1,
           l2_regularization=1.,
@@ -183,21 +183,22 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertAllClose(0.52, split_node.threshold, 0.00001)
 
   def testObliviousFeatureSplitGeneration(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # The data looks like the following:
       # Example |  Gradients    | Partition | Dense Quantile |
-      # i0      |  (0.2, 0.12)  | 1         | 2              |
-      # i1      |  (-0.5, 0.07) | 1         | 2              |
-      # i2      |  (1.2, 0.2)   | 1         | 0              |
-      # i3      |  (4.0, 0.13)  | 2         | 1              |
-      dense_column = array_ops.constant([0.62, 0.62, 0.3, 0.52])
+      # i0      |  (0.2, 0.12)  | 1         | 3              |
+      # i1      |  (-0.5, 0.07) | 1         | 3              |
+      # i2      |  (1.2, 0.2)   | 1         | 1              |
+      # i3      |  (4.0, 0.13)  | 2         | 2              |
+      dense_column = array_ops.placeholder(
+          dtypes.float32, shape=(4, 1), name="dense_column")
       gradients = array_ops.constant([0.2, -0.5, 1.2, 4.0])
       hessians = array_ops.constant([0.12, 0.07, 0.2, 0.13])
       partition_ids = array_ops.constant([1, 1, 1, 2], dtype=dtypes.int32)
       class_id = -1
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       split_handler = ordinal_split_handler.DenseSplitHandler(
           l1_regularization=0.1,
           l2_regularization=1.,
@@ -230,24 +231,28 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
       with ops.control_dependencies([update_1]):
         are_splits_ready = split_handler.make_splits(
             np.int64(0), np.int64(1), class_id)[0]
+        # Forcing the creation of four buckets.
+        are_splits_ready = sess.run(
+            [are_splits_ready],
+            feed_dict={dense_column: [[0.2], [0.62], [0.3], [0.52]]})[0]
 
-      with ops.control_dependencies([are_splits_ready]):
-        update_2 = split_handler.update_stats_sync(
-            1,
-            partition_ids,
-            gradients,
-            hessians,
-            empty_gradients,
-            empty_hessians,
-            example_weights,
-            is_active=array_ops.constant([True, True]))
+      update_2 = split_handler.update_stats_sync(
+          1,
+          partition_ids,
+          gradients,
+          hessians,
+          empty_gradients,
+          empty_hessians,
+          example_weights,
+          is_active=array_ops.constant([True, True]))
       with ops.control_dependencies([update_2]):
         are_splits_ready2, partitions, gains, splits = (
             split_handler.make_splits(np.int64(1), np.int64(2), class_id))
-        are_splits_ready, are_splits_ready2, partitions, gains, splits = (
-            sess.run([
-                are_splits_ready, are_splits_ready2, partitions, gains, splits
-            ]))
+        # Only using the last three buckets.
+        are_splits_ready2, partitions, gains, splits = (
+            sess.run(
+                [are_splits_ready2, partitions, gains, splits],
+                feed_dict={dense_column: [[0.62], [0.62], [0.3], [0.52]]}))
 
     # During the first iteration, inequality split handlers are not going to
     # have any splits. Make sure that we return not_ready in that case.
@@ -315,7 +320,7 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertEqual(2, oblivious_split_info.children_parent_id[1])
 
   def testGenerateFeatureSplitCandidatesLossUsesSumReduction(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # The data looks like the following:
       # Example |  Gradients    | Partition | Dense Quantile |
       # i0      |  (0.2, 0.12)  | 0         | 1              |
@@ -328,8 +333,8 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
       partition_ids = array_ops.constant([0, 0, 0, 1], dtype=dtypes.int32)
       class_id = -1
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       split_handler = ordinal_split_handler.DenseSplitHandler(
           l1_regularization=0.2,
           l2_regularization=2.,
@@ -453,7 +458,7 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertAllClose(0.52, split_node.threshold, 0.00001)
 
   def testGenerateFeatureSplitCandidatesMulticlassFullHessian(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       dense_column = array_ops.constant([0.52, 0.52, 0.3, 0.52])
       # Batch size is 4, 2 gradients per each instance.
       gradients = array_ops.constant(
@@ -541,7 +546,7 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertAllClose(0.3, split_node.threshold, 1e-6)
 
   def testGenerateFeatureSplitCandidatesMulticlassDiagonalHessian(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       dense_column = array_ops.constant([0.52, 0.52, 0.3, 0.52])
       # Batch size is 4, 2 gradients per each instance.
       gradients = array_ops.constant(
@@ -628,7 +633,7 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertAllClose(0.3, split_node.threshold, 1e-6)
 
   def testGenerateFeatureSplitCandidatesInactive(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # The data looks like the following:
       # Example |  Gradients    | Partition | Dense Quantile |
       # i0      |  (0.2, 0.12)  | 0         | 1              |
@@ -640,8 +645,8 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
       hessians = array_ops.constant([0.12, 0.07, 0.2, 0.13])
       partition_ids = array_ops.constant([0, 0, 0, 1], dtype=dtypes.int32)
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       class_id = -1
 
       split_handler = ordinal_split_handler.DenseSplitHandler(
@@ -703,7 +708,7 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertEqual(len(splits), 0)
 
   def testGenerateFeatureSplitCandidatesWithTreeComplexity(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # The data looks like the following:
       # Example |  Gradients    | Partition | Dense Quantile |
       # i0      |  (0.2, 0.12)  | 0         | 1              |
@@ -715,8 +720,8 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
       hessians = array_ops.constant([0.12, 0.07, 0.2, 0.13])
       partition_ids = array_ops.constant([0, 0, 0, 1], dtype=dtypes.int32)
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       class_id = -1
 
       split_handler = ordinal_split_handler.DenseSplitHandler(
@@ -837,7 +842,7 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertAllClose(0.52, split_node.threshold, 0.00001)
 
   def testGenerateFeatureSplitCandidatesWithMinNodeWeight(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # The data looks like the following:
       # Example |  Gradients    | Partition | Dense Quantile |
       # i0      |  (0.2, 0.12)  | 0         | 1              |
@@ -849,8 +854,8 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
       hessians = array_ops.constant([0.12, 0.07, 0.2, 2])
       partition_ids = array_ops.constant([0, 0, 0, 1], dtype=dtypes.int32)
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       class_id = -1
 
       split_handler = ordinal_split_handler.DenseSplitHandler(
@@ -946,7 +951,7 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
 class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
 
   def testGenerateFeatureSplitCandidates(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # The data looks like the following:
       # Example |  Gradients    | Partition | Sparse Quantile |
       # i0      |  (0.2, 0.12)  | 0         | 1               |
@@ -960,8 +965,8 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
       values = array_ops.constant([0.52, 0.3, 0.52])
       sparse_column = sparse_tensor.SparseTensor(indices, values, [4, 1])
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       class_id = -1
 
       split_handler = ordinal_split_handler.SparseSplitHandler(
@@ -1069,7 +1074,7 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertAllClose(0.52, split_node.split.threshold)
 
   def testGenerateFeatureSplitCandidatesLossUsesSumReduction(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # The data looks like the following:
       # Example |  Gradients    | Partition | Sparse Quantile |
       # i0      |  (0.2, 0.12)  | 0         | 1               |
@@ -1083,8 +1088,8 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
       values = array_ops.constant([0.52, 0.3, 0.52])
       sparse_column = sparse_tensor.SparseTensor(indices, values, [4, 1])
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       class_id = -1
 
       split_handler = ordinal_split_handler.SparseSplitHandler(
@@ -1202,7 +1207,7 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertAllClose(0.52, split_node.split.threshold)
 
   def testGenerateFeatureSplitCandidatesMulticlassFullHessian(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Batch is 4, 2 classes
       gradients = array_ops.constant([[0.2, 1.4], [-0.5, 0.1], [1.2, 3],
                                       [4.0, -3]])
@@ -1297,7 +1302,7 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertAllClose(0.52, split_node.split.threshold)
 
   def testGenerateFeatureSplitCandidatesMulticlassDiagonalHessian(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Batch is 4, 2 classes
       gradients = array_ops.constant([[0.2, 1.4], [-0.5, 0.1], [1.2, 3],
                                       [4.0, -3]])
@@ -1392,7 +1397,7 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertAllClose(0.52, split_node.split.threshold)
 
   def testGenerateFeatureSplitCandidatesInactive(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # The data looks like the following:
       # Example |  Gradients    | Partition | Sparse Quantile |
       # i0      |  (0.2, 0.12)  | 0         | 1               |
@@ -1406,8 +1411,8 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
       values = array_ops.constant([0.52, 0.3, 0.52])
       sparse_column = sparse_tensor.SparseTensor(indices, values, [4, 1])
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       class_id = -1
 
       split_handler = ordinal_split_handler.SparseSplitHandler(
@@ -1470,14 +1475,14 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertEqual(len(splits), 0)
 
   def testEmpty(self):
-    with self.test_session() as sess:
-      indices = array_ops.constant([], dtype=dtypes.int64, shape=[0, 2])
+    with self.cached_session() as sess:
+      indices = constant_op.constant_v1([], dtype=dtypes.int64, shape=[0, 2])
       # No values in this feature column in this mini-batch.
-      values = array_ops.constant([], dtype=dtypes.float32)
+      values = constant_op.constant_v1([], dtype=dtypes.float32)
       sparse_column = sparse_tensor.SparseTensor(indices, values, [4, 1])
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       class_id = -1
 
       split_handler = ordinal_split_handler.SparseSplitHandler(
@@ -1540,12 +1545,13 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
 
   def testEmptyBuckets(self):
     """Test that reproduces the case when quantile buckets were empty."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sparse_column = array_ops.sparse_placeholder(dtypes.float32)
 
       # We have two batches - at first, a sparse feature is empty.
-      empty_indices = array_ops.constant([], dtype=dtypes.int64, shape=[0, 2])
-      empty_values = array_ops.constant([], dtype=dtypes.float32)
+      empty_indices = constant_op.constant_v1([], dtype=dtypes.int64,
+                                              shape=[0, 2])
+      empty_values = constant_op.constant_v1([], dtype=dtypes.float32)
       empty_sparse_column = sparse_tensor.SparseTensor(empty_indices,
                                                        empty_values, [4, 2])
       empty_sparse_column = empty_sparse_column.eval(session=sess)
@@ -1559,8 +1565,8 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
           non_empty_indices, non_empty_values, [4, 2])
       non_empty_sparse_column = non_empty_sparse_column.eval(session=sess)
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       class_id = -1
 
       split_handler = ordinal_split_handler.SparseSplitHandler(
@@ -1633,7 +1639,7 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertEqual(len(splits), 0)
 
   def testDegenerativeCase(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # One data example only, one leaf and thus one quantile bucket.The same
       # situation is when all examples have the same values. This case was
       # causing before a failure.
@@ -1644,8 +1650,8 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
       values = array_ops.constant([0.58])
       sparse_column = sparse_tensor.SparseTensor(indices, values, [1, 1])
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       class_id = -1
 
       split_handler = ordinal_split_handler.SparseSplitHandler(

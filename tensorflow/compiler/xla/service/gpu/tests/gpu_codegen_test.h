@@ -26,14 +26,14 @@ namespace gpu {
 // Tests that verify IR or PTX emitted by the GPU backend is as expected.
 class GpuCodegenTest : public LlvmIrGenTestBase {
  protected:
-  // Like HloTestBase::CreateNewModule(), with a flag for configuring the ftz
-  // option.
-  std::unique_ptr<HloModule> CreateNewModuleWithFTZ(bool ftz);
+  // Like HloTestBase::CreateNewVerifiedModule(), with a flag for configuring
+  // the ftz option.
+  std::unique_ptr<HloModule> CreateNewUnverifiedModuleWithFTZ(bool ftz);
 
   // Compiles the given HLO module to PTX and verifies the PTX matches the given
   // FileCheck pattern.  (See http://llvm.org/docs/CommandGuide/FileCheck.html).
   void CompileAndVerifyPtx(std::unique_ptr<HloModule> hlo_module,
-                           const string& pattern);
+                           absl::string_view pattern);
 };
 
 }  // namespace gpu

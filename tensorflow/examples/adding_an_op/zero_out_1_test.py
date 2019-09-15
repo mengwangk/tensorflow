@@ -23,13 +23,27 @@ import os.path
 
 import tensorflow as tf
 from tensorflow.examples.adding_an_op import zero_out_op_1
+from tensorflow.python.framework import test_util
 
 
 class ZeroOut1Test(tf.test.TestCase):
 
+  @test_util.run_deprecated_v1
   def test(self):
     with self.cached_session():
       result = zero_out_op_1.zero_out([5, 4, 3, 2, 1])
+      self.assertAllEqual(result.eval(), [5, 0, 0, 0, 0])
+
+  @test_util.run_deprecated_v1
+  def test_namespace(self):
+    with self.cached_session():
+      result = zero_out_op_1.namespace_zero_out([5, 4, 3, 2, 1])
+      self.assertAllEqual(result.eval(), [5, 0, 0, 0, 0])
+
+  @test_util.run_deprecated_v1
+  def test_namespace_nested(self):
+    with self.cached_session():
+      result = zero_out_op_1.namespace_nested_zero_out([5, 4, 3, 2, 1])
       self.assertAllEqual(result.eval(), [5, 0, 0, 0, 0])
 
   def testLoadTwice(self):

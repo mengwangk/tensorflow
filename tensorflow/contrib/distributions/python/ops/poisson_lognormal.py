@@ -220,7 +220,8 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
   #### Examples
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   # Create two batches of PoissonLogNormalQuadratureCompounds, one with
   # prior `loc = 0.` and another with `loc = 1.` In both cases `scale = 1.`
@@ -354,7 +355,7 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
         self.mixture_distribution.logits.shape)[:-1]
 
   def _event_shape(self):
-    return tensor_shape.scalar()
+    return tensor_shape.TensorShape([])
 
   def _sample_n(self, n, seed=None):
     # Get ids as a [n, batch_size]-shaped matrix, unless batch_shape=[] then get

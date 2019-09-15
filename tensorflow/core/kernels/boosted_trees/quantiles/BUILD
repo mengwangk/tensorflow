@@ -1,14 +1,14 @@
 # Description:
-#   This directory contains common utilities used in boosted_trees.
-package(
-    default_visibility = ["//tensorflow:internal"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
+#   This directory contains common quantile utilities used in boosted_trees.
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 # Quantiles
 
@@ -16,6 +16,7 @@ cc_library(
     name = "weighted_quantiles",
     srcs = [],
     hdrs = [
+        "quantile_stream_resource.h",
         "weighted_quantiles_buffer.h",
         "weighted_quantiles_stream.h",
         "weighted_quantiles_summary.h",
@@ -23,6 +24,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
     ],
 )
 

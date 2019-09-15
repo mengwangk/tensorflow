@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/env.h"
@@ -36,17 +35,16 @@ namespace xla {
 
 /* static */ TestAllocator* LocalClientTestBase::allocator_;
 
-StatusOr<OwningDeviceMemory> TestAllocator::Allocate(int device_ordinal,
-                                                     uint64 size,
-                                                     bool retry_on_failure) {
+StatusOr<se::OwningDeviceMemory> TestAllocator::Allocate(
+    int device_ordinal, uint64 size, bool retry_on_failure) {
   VLOG(2) << "Allocate(" << device_ordinal << ", " << size << ")";
   {
     tensorflow::mutex_lock lock(count_mutex_);
     allocation_count_++;
     device_allocation_count_[device_ordinal]++;
   }
-  return StreamExecutorMemoryAllocator::Allocate(device_ordinal, size,
-                                                 retry_on_failure);
+  return se::StreamExecutorMemoryAllocator::Allocate(device_ordinal, size,
+                                                     retry_on_failure);
 }
 
 Status TestAllocator::Deallocate(int device_ordinal, se::DeviceMemoryBase mem) {
@@ -56,7 +54,7 @@ Status TestAllocator::Deallocate(int device_ordinal, se::DeviceMemoryBase mem) {
     deallocation_count_++;
     device_deallocation_count_[device_ordinal]++;
   }
-  return StreamExecutorMemoryAllocator::Deallocate(device_ordinal, mem);
+  return se::StreamExecutorMemoryAllocator::Deallocate(device_ordinal, mem);
 }
 
 int64 TestAllocator::allocation_count() const {
@@ -108,12 +106,10 @@ struct LocalClientTestBase::EigenThreadPoolWrapper {
   explicit EigenThreadPoolWrapper()
       : pool(new tensorflow::thread::ThreadPool(
             tensorflow::Env::Default(), "XLAEigenTest", /*num_threads=*/2)),
-        wrapper(new tensorflow::EigenThreadPoolWrapper(pool.get())),
-        device(new Eigen::ThreadPoolDevice(wrapper.get(),
-                                           wrapper->NumThreads())) {}
+        device(new Eigen::ThreadPoolDevice(pool->AsEigenThreadPool(),
+                                           pool->NumThreads())) {}
 
   std::unique_ptr<tensorflow::thread::ThreadPool> pool;
-  std::unique_ptr<tensorflow::EigenThreadPoolWrapper> wrapper;
   std::unique_ptr<Eigen::ThreadPoolDevice> device;
 };
 
@@ -121,8 +117,10 @@ LocalClientTestBase::LocalClientTestBase(se::Platform* platform)
     : local_client_(
           ClientLibrary::GetOrCreateLocalClient(platform).ValueOrDie()),
       thread_pool_wrapper_(new EigenThreadPoolWrapper()) {
+  // Take the first executor, since it's the default one.
   stream_executor_ = PlatformUtil::GetStreamExecutors(local_client_->platform())
-                         .ValueOrDie()[local_client_->default_device_ordinal()];
+                         .ValueOrDie()
+                         .front();
   transfer_manager_ =
       TransferManager::GetForPlatform(local_client_->platform()).ValueOrDie();
 }
@@ -136,7 +134,7 @@ ScopedShapedBuffer LocalClientTestBase::LiteralToShapedBuffer(
       .ConsumeValueOrDie();
 }
 
-std::unique_ptr<Literal> LocalClientTestBase::ShapedBufferToLiteral(
+Literal LocalClientTestBase::ShapedBufferToLiteral(
     const ShapedBuffer& shaped_buffer) {
   return local_client_->ShapedBufferToLiteral(shaped_buffer)
       .ConsumeValueOrDie();
@@ -156,7 +154,7 @@ ExecutableRunOptions LocalClientTestBase::DefaultExecutableRunOptions() const {
 
 ScopedShapedBuffer LocalClientTestBase::ExecuteLocallyOrDie(
     const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
+    absl::Span<const ShapedBuffer* const> arguments) {
   return ExecuteLocally(computation, arguments, DefaultExecutableBuildOptions(),
                         DefaultExecutableRunOptions())
       .ConsumeValueOrDie();
@@ -164,7 +162,7 @@ ScopedShapedBuffer LocalClientTestBase::ExecuteLocallyOrDie(
 
 ScopedShapedBuffer LocalClientTestBase::ExecuteLocallyOrDie(
     const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+    absl::Span<const ShapedBuffer* const> arguments,
     const ExecutableBuildOptions& build_options,
     const ExecutableRunOptions& run_options) {
   return ExecuteLocally(computation, arguments, build_options, run_options)
@@ -173,14 +171,14 @@ ScopedShapedBuffer LocalClientTestBase::ExecuteLocallyOrDie(
 
 StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
     const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
+    absl::Span<const ShapedBuffer* const> arguments) {
   return ExecuteLocally(computation, arguments, DefaultExecutableBuildOptions(),
                         DefaultExecutableRunOptions());
 }
 
 StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
     const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+    absl::Span<const ShapedBuffer* const> arguments,
     const ExecutableBuildOptions& build_options,
     const ExecutableRunOptions& run_options) {
   std::vector<const Shape*> argument_layouts(arguments.size());

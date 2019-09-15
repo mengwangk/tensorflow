@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -58,22 +59,20 @@ string CanonicalPlatformName(const string& name) {
 
 /* static */ StatusOr<std::vector<se::Platform*>>
 PlatformUtil::GetSupportedPlatforms() {
-  se::MultiPlatformManager::PlatformMap platform_map;
-  se::port::Status platforms_status = se::MultiPlatformManager::WithPlatforms(
-      [&platform_map](se::MultiPlatformManager::PlatformMap* map) {
-        platform_map = *map;
-        return se::port::Status::OK();
-      });
-  if (platform_map.empty()) {
+  std::vector<se::Platform*> all_platforms =
+      se::MultiPlatformManager::AllPlatforms();
+  if (all_platforms.empty()) {
     LOG(WARNING) << "no executor platforms available: platform map is empty";
   }
 
   // Gather all platforms which have an XLA compiler.
   std::vector<se::Platform*> platforms;
-  for (auto& platform_pair : platform_map) {
-    auto* platform = platform_pair.second;
+  for (se::Platform* platform : all_platforms) {
     auto compiler_status = Compiler::GetForPlatform(platform);
     if (compiler_status.ok()) {
+      if (!platform->Initialized()) {
+        TF_RETURN_IF_ERROR(platform->Initialize({}));
+      }
       platforms.push_back(platform);
     } else {
       LOG(INFO) << "platform " << platform->Name() << " present but no "
@@ -89,7 +88,11 @@ PlatformUtil::GetSupportedPlatforms() {
   if (platforms.empty()) {
     return NotFound("no platforms found");
   } else if (platforms.size() == 1) {
-    return platforms[0];
+    se::Platform* platform = platforms[0];
+    if (!platform->Initialized()) {
+      TF_RETURN_IF_ERROR(platform->Initialize({}));
+    }
+    return platform;
   }
 
   // Multiple platforms present and we can't pick a reasonable default.
@@ -98,22 +101,31 @@ PlatformUtil::GetSupportedPlatforms() {
       [](string* out, const se::Platform* p) { out->append(p->Name()); });
   return InvalidArgument(
       "must specify platform because more than one platform found: %s",
-      platforms_string.c_str());
+      platforms_string);
 }
 
 /* static */ StatusOr<se::Platform*> PlatformUtil::GetDefaultPlatform() {
   TF_ASSIGN_OR_RETURN(auto platforms, GetSupportedPlatforms());
+
+  se::Platform* platform = nullptr;
   if (platforms.empty()) {
     return NotFound("no platforms found");
   } else if (platforms.size() == 1) {
-    return platforms[0];
+    platform = platforms[0];
   } else if (platforms.size() == 2) {
     for (int i = 0; i < 2; i++) {
       if (absl::AsciiStrToLower(platforms[i]->Name()) == kInterpreter &&
           absl::AsciiStrToLower(platforms[1 - i]->Name()) != kInterpreter) {
-        return platforms[1 - i];
+        platform = platforms[1 - i];
+        break;
       }
     }
+  }
+  if (platform != nullptr) {
+    if (!platform->Initialized()) {
+      TF_RETURN_IF_ERROR(platform->Initialize({}));
+    }
+    return platform;
   }
 
   // Multiple platforms present and we can't pick a reasonable default.
@@ -123,7 +135,7 @@ PlatformUtil::GetSupportedPlatforms() {
   return InvalidArgument(
       "must specify platform because more than one platform (except for the "
       "interpreter platform) found: %s",
-      platforms_string.c_str());
+      platforms_string);
 }
 
 /*static*/ StatusOr<se::Platform*> PlatformUtil::GetPlatform(
@@ -132,10 +144,13 @@ PlatformUtil::GetSupportedPlatforms() {
   TF_ASSIGN_OR_RETURN(auto platforms, PlatformUtil::GetSupportedPlatforms());
   for (se::Platform* platform : platforms) {
     if (absl::AsciiStrToLower(platform->Name()) == platform_str) {
+      if (!platform->Initialized()) {
+        TF_RETURN_IF_ERROR(platform->Initialize({}));
+      }
       return platform;
     }
   }
-  return InvalidArgument("platform %s not found", platform_name.c_str());
+  return InvalidArgument("platform %s not found", platform_name);
 }
 
 /*static*/ StatusOr<se::Platform*> PlatformUtil::GetPlatformExceptFor(
@@ -151,17 +166,21 @@ PlatformUtil::GetSupportedPlatforms() {
   }
   if (matched.empty()) {
     return InvalidArgument("unable to find platform that is not %s",
-                           platform_name.c_str());
+                           platform_name);
   }
   if (matched.size() == 1) {
-    return matched[0];
+    auto platform = matched[0];
+    if (!platform->Initialized()) {
+      TF_RETURN_IF_ERROR(platform->Initialize({}));
+    }
+    return platform;
   }
   string matched_string = absl::StrJoin(
       matched, ", ",
       [](string* out, const se::Platform* p) { out->append(p->Name()); });
   return InvalidArgument(
       "found multiple platforms %s, but expected one platform except for %s",
-      matched_string.c_str(), platform_name.c_str());
+      matched_string, platform_name);
 }
 
 // Returns whether the device underlying the given StreamExecutor is supported
@@ -189,17 +208,22 @@ static bool IsDeviceSupported(se::StreamExecutor* executor) {
 }
 
 /* static */ StatusOr<std::vector<se::StreamExecutor*>>
-PlatformUtil::GetStreamExecutors(se::Platform* platform) {
+PlatformUtil::GetStreamExecutors(
+    se::Platform* platform,
+    const absl::optional<std::set<int>>& allowed_devices) {
   int device_count = platform->VisibleDeviceCount();
   if (device_count <= 0) {
-    return NotFound("no %s devices found", platform->Name().c_str());
+    return NotFound("no %s devices found", platform->Name());
   }
   if (platform->id() == se::host::kHostPlatformId) {
     // On host "devices", StreamExecutor exports a device for each hardware
     // thread. Because we parallelize a single computation across threads, it
-    // doesn't make sense to expose these as separate devices, so fix the number
-    // of devices to one.
-    device_count = 1;
+    // doesn't make sense to expose these as separate devices, so by default we
+    // fix the number of devices to one.  However we do let the user override
+    // this behavior to help run tests on the host that run models in parallel
+    // across multiple devices.
+    device_count =
+        GetDebugOptionsFromFlags().xla_force_host_platform_device_count();
   }
   std::vector<se::StreamExecutor*> stream_executors(device_count, nullptr);
   VLOG(1) << "Initializing devices";
@@ -207,6 +231,17 @@ PlatformUtil::GetStreamExecutors(se::Platform* platform) {
     tensorflow::thread::ThreadPool thread_pool(
         tensorflow::Env::Default(), "device_initialization", device_count);
     for (int i = 0; i < device_count; ++i) {
+      // Once a stream executor is instantiated it will cause allocations on
+      // the device, for example for GPUs cuda context, cudnn handles etc. will
+      // be constructed. By constructing stream executors only on the
+      // allowed_devices, we don't make any allocations on other devices.
+      // This helps in multi-process executions on the same host like horovod or
+      // shared hosts.
+      if (allowed_devices && allowed_devices->count(i) == 0) {
+        VLOG(1) << "Not initializing StreamExecutor for device " << i
+                << " since it is not in the visible device list";
+        continue;
+      }
       thread_pool.Schedule([platform, i, &stream_executors]() {
         VLOG(1) << "Started device init " << i;
         se::StreamExecutorConfig config;
@@ -228,12 +263,18 @@ PlatformUtil::GetStreamExecutors(se::Platform* platform) {
     // Block here in thread_pool destructor until all devices are initialized.
   }
   VLOG(1) << "Device initialization complete";
-  if (std::all_of(stream_executors.begin(), stream_executors.end(),
-                  [](se::StreamExecutor* s) { return s == nullptr; })) {
-    return InternalError("no supported devices found for platform %s",
-                         platform->Name().c_str());
+
+  std::vector<se::StreamExecutor*> out;
+  for (se::StreamExecutor* executor : stream_executors) {
+    if (executor != nullptr) {
+      out.push_back(executor);
+    }
   }
-  return stream_executors;
+  if (out.empty()) {
+    return InternalError("no supported devices found for platform %s",
+                         platform->Name());
+  }
+  return out;
 }
 
 }  // namespace xla
